@@ -35,17 +35,27 @@ class Assembler:
     def _pass_one(self):
         # First pass collect all the labels and their line num
         PC = 0
+
         for ins in self.instructions:
             first_word = ins[0]
-            if first_word.startswith('.'):
-                continue    # Compiler directive
-            elif first_word.endswith(':'):  # Label
+
+            if first_word.endswith(':'):        # Label
+                label_name = first_word[:-1]
+
                 if first_word[0].isalpha() or first_word.startswith('_'):
-                    self._labels[first_word[:-1]] = PC
-                    PC += self.INSTRUCTION_SIZE
+                    self._labels[label_name] = PC
+
                 else:
                     print(f"ERROR: Invalid label '{first_word}'. Labels may only start with a letter or underscore.")
                     sys.exit(1)
+
+            elif first_word.startswith('.'):    # Directive
+                directive = first_word.upper()
+
+                # Incrememt PC depending on directive
+                if directive in [".GLOBAL", ".TEXT", ".ALIGN"]:     # 0 Bytes
+                    continue
+
             
     def _pass_two(self):
         pass
