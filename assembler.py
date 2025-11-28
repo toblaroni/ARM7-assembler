@@ -71,6 +71,7 @@ class Assembler:
                 directive = first_word.upper()
 
                 match directive:
+                    # === CONTROL DIRECTIVES ===
                     case ".ARM":    
                         self._INS_SET_MODE = InstructionMode.ARM
                     case ".THUMB":
@@ -80,15 +81,45 @@ class Assembler:
                             self._error(ins["line_num"], "Expected instruction set 32 or 16 after .code.", -1) 
 
                         code = ins["tokens"][1]
-
                         if code == "16":
                             self._INS_SET_MODE = InstructionMode.THUMB
                         elif code == "32":
                             self._INS_SET_MODE = InstructionMode.ARM
                         else:
                             self._error(ins["line_num"], f"Invalid instruction set {code}. Expected 16 or 32.", -1)
+                    case ".INCLUDE":
+                        # .include {file}
+                        pass
+                    case ".ALIGN" | ".BALIGN": 
+                        # .align {alignment} {, fill}, {, max}
+                        pass
+                    case ".BALIGNW":
+                        pass
+                    case ".BALIGNL":
+                        pass
+                    case ".END":
+                        pass
+                    case ".FAIL":
+                        pass
+                    case ".ERR":
+                        pass
+                    case ".PRINT":
+                        pass
+                    case ".SECTION":
+                        pass
+                    case ".TEXT":
+                        pass
+                    case ".DATA":
+                        pass
+                    case ".BSS":
+                        pass
+                    case ".STRUCT":
+                        pass
+                    case ".ORG":
+                        pass
+                    case ".POOL":
+                        pass
 
-            
     def _pass_two(self):
         pass
 
