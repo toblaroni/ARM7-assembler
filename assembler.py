@@ -2,14 +2,14 @@ from enum import Enum
 import os
 import sys
 import argparse
+from pathlib import Path
 
 class InstructionMode(Enum):
     ARM = 0
     THUMB = 1
 
 class Assembler:
-    def __init__(self):
-
+    def __init__(self, verbose=False):
         self._labels = {}
         self._INS_SET_MODE = InstructionMode.ARM    # Default
         self._source = {}                           # Contains info on all source code encountered
@@ -17,8 +17,13 @@ class Assembler:
         self._cur_file = None
         self._machine_code = []                     # Have a mega buffer that stores all output instructions
         self._output_file_path = None
+        self.verbose = verbose
 
-    def assemble(self, source_file, output_file=None):
+    def _verbose_print(self, *msgs):
+        if self.verbose:
+            print("INFO:", *msgs)
+
+    def assemble(self, source_file, output_file=None, verbose=False):
         if self._output_file_path == None:
             if output_file == None:
                 try:
@@ -27,8 +32,10 @@ class Assembler:
                     print(f"ERROR: Invalid input file {source_file}")
                     sys.exit(-1)
             else:
-                # TODO - Output path validation
+                # TODO Validate output path
                 self._output_file_path = output_file
+
+        self._verbose_print(f"Output file set to {self._output_file_path}")
 
         # Parse (2 passes)
         self._parse_source_file(source_file)   
@@ -38,6 +45,8 @@ class Assembler:
 
         # Translate instructions to binary
         self._pass_two()
+
+        print("Compilation Successful.")
         
     def _error(self, line_num, msg, error_code):
         print(f"{self._cur_file}:{line_num}: ERROR: {msg}")
@@ -50,6 +59,8 @@ class Assembler:
                 if file_name in self._source:
                     print(f"ERROR: {file_name} already parsed?!")
                     sys.exit(-1)
+
+                self._verbose_print(f"Parsing {source_file}...")
                 
                 self._source[file_name] = {}
                 self._source[file_name]["instructions"] = []
@@ -76,23 +87,31 @@ class Assembler:
 
 
     def _pass_one(self):
+        self._verbose_print(f"Starting first pass for {self._cur_file}")
 
         for ins in self._source[self._cur_file]["instructions"]:
-            first_word = ins["tokens"][0]
+            tokens = ins["tokens"]
+            token_index = 0
 
-            if first_word.endswith(':'):        # Label
-                label_name = first_word[:-1]
+            if tokens[0].endswith(':'):         # Label
+                label_name = tokens[0][:-1]     # Remove colon
 
-                if first_word[0].isalpha() or first_word.startswith('_'):
+                if tokens[0][0].isalpha() or tokens[0].startswith('_'):
                     if not label_name in self._labels:
                         self._labels[label_name] = self._PC
+                        token_index = 1
                     else:
                         self._error(ins["line_num"], f"{label_name} already defined.", -1)
                 else:
                     self._error(ins["line_num"], "Invalid label.", -1) 
 
-            elif first_word.startswith('.'):    # Directive
-                directive = first_word.upper()
+            if token_index == len(tokens):  # Just a label on its own line
+                continue
+
+            # === Handle Directives ===
+            elif tokens[token_index].startswith('.'):
+                directive = tokens[token_index].upper()
+                self._verbose_print(f"Handling directive: {directive}")
 
                 match directive:
                     # === CONTROL DIRECTIVES ===
@@ -101,10 +120,10 @@ class Assembler:
                     case ".THUMB":
                         self._INS_SET_MODE = InstructionMode.THUMB
                     case ".CODE":
-                        if len(ins["tokens"]) != 2:
+                        if len(tokens) != 2:
                             self._error(ins["line_num"], "Expected instruction set 32 or 16 after .code.", -1) 
 
-                        code = ins["tokens"][1]
+                        code = tokens[token_index+1]
                         if code == "16":
                             self._INS_SET_MODE = InstructionMode.THUMB
                         elif code == "32":
@@ -112,145 +131,64 @@ class Assembler:
                         else:
                             self._error(ins["line_num"], f"Invalid instruction set {code}. Expected 16 or 32.", -1)
 
-                    case ".INCLUDE":    # .include {file}
-                        if len(ins["tokens"]) != 2:
+                    case ".INCLUDE":    
+                        # .include {file}
+                        if len(tokens) != 2:
                             self._error(ins["line_num"], "'.include' directive requires a filename.", -1)
                         
                         # We need to recursively assemble the files
-                        source_file = ins["tokens"][1]
+                        source_file = tokens[token_index+1]
                         self.assemble(source_file)
                         self._cur_file = self._source[self._cur_file]["parent_file"]
 
-
-                    case ".ALIGN" | ".BALIGN": 
+                    case ".ALIGN" | ".BALIGN":  # MVP
                         # .align {alignment} {, fill}, {, max}
                         pass
-                    case ".BALIGNW":
+                    case ".TEXT":   # N2H
                         pass
-                    case ".BALIGNL":
+                    case ".DATA":   # N2H
                         pass
-                    case ".END":
-                        pass
-                    case ".FAIL":
-                        pass
-                    case ".ERR":
-                        pass
-                    case ".PRINT":
-                        pass
-                    case ".SECTION":
-                        pass
-                    case ".TEXT":
-                        pass
-                    case ".DATA":
-                        pass
-                    case ".BSS":
-                        pass
-                    case ".STRUCT":
-                        pass
-                    case ".ORG":
-                        pass
-                    case ".POOL":
-                        pass
+
+                    case ".BALIGNW" | ".BALIGNL" | ".END" | ".FAIL" | ".ERR" | ".PRINT" | ".SECTION" | ".BSS" | ".STRUCT" | ".ORG" | ".POOL":
+                        self._error(ins["line_num"], f"Directive {directive} not implemented yet!", -1)
 
                     # === Symbol Directives ===
-                    case ".EQU" | ".SET":
+                    case ".EQU" | ".SET":   # N2H
+                        pass
+                    case ".GLOBAL" | ".GLOBL":  # N2H
                         pass
                     case ".EQUIV":
-                        pass
-                    case ".GLOBAL" | ".GLOBL":
-                        pass
+                        self._error(ins["line_num"], f"Directive {directive} not implemented yet!", -1)
 
                     # === Constant Definition Directives ===
-                    case ".BYTE":
+                    case ".BYTE":   # MVP
                         pass
-                    case ".HWORD" | ".SHORT":
-                        pass
-                    case ".WORD" | ".INT" | ".LONG":
-                        pass
-                    case ".ASCII":
-                        pass
-                    case ".ASCIZ":
-                        pass
-                    case ".STRING":
-                        pass
-                    case ".QUAD":
-                        pass
-                    case ".OCTA":
-                        pass
-                    case ".FLOAT" | ".SINGLE":
-                        pass
-                    case ".DOUBLE":
-                        pass
-                    case ".FILL":
-                        pass
-                    case ".ZERO":
-                        pass
-                    case ".SPACE" | "SKIP":
+                    case ".WORD" | ".INT" | ".LONG":    # MVP
                         pass
 
-                    # === Assembly Listing Directives ===
-                    case ".EJECT":
-                        pass
-                    case ".PSIZE":
-                        pass
-                    case ".LIST":
-                        pass
-                    case ".NOLIST":
-                        pass
-                    case ".TITLE":
-                        pass
-                    case ".SBTTL":
-                        pass
-                    
+                    # Implement later
+                    case ".HWORD" | ".SHORT" | ".ASCII" | ".ASCIZ" | ".STRING" | ".QUAD" | ".OCTA" | ".FLOAT" | ".SINGLE" | ".DOUBLE" | ".FILL" | ".ZERO" | ".SPACE" | "SKIP":
+                        self._error(ins["line_num"], f"Directive {directive} not implemented yet!", -1)
+
                     # === Conditional Directives ===
-                    case ".IF":
-                        pass
-                    case ".ELSEIF":
-                        pass
-                    case ".ELSE":
-                        pass
-                    case ".ENDIF":
-                        pass
-                    case ".IFDEF":
-                        pass
-                    case ".IFNDEF" | ".IFNOTDEF":
-                        pass
-                    case ".IFC" | ".IFEQS" | ".IFNES":
-                        pass
-                    case ".IFEQ":
-                        pass
-                    case ".IFNE":
-                        pass
-                    case ".IFGE":
-                        pass
-                    case ".IFLE":
-                        pass
-                    case ".IFLT":
-                        pass
-
-                    # === Debug Directives ===
-                    case ".FUNC" | ".ENDFUNC" | ".STABS":
-                        continue
+                    # Preprocessor...
+                    # Implement later
+                    case ".IF" | ".ELSEIF" | ".ELSE" | ".ENDIF" | ".IFDEF" | ".IFNDEF" | ".IFNOTDEF" | ".IFC" | ".IFEQS" | ".IFNES" | ".IFEQ" | ".IFNE" | ".IFGE" | ".IFLE" | ".IFLT":
+                        self._error(ins["line_num"], "Preprocessor directives not implemented yet!", -1)
 
                     # === Looping Directives ===
-                    case ".REPT":
-                        pass
-                    case ".IRP":
-                        pass
-                    case ".IRPC":
-                        pass
-                    case ".ENDR":
-                        pass
+                    # Implement later
+                    case ".REPT" | ".IRP" | ".IRPC" | ".ENDR":
+                        self._error(ins["line_num"], "Looping directives not implemented yet!", -1)
 
                     # === Macro Directives ===
-                    case ".MACRO":
-                        pass
-                    case ".ENDM":
-                        pass
-                    case ".EXITM":
-                        pass
-                    case ".PURGEM":
-                        pass
+                    # Advanced assembler features
+                    # Implement later
+                    case ".MACRO" | ".ENDM" |".EXITM" | ".PURGEM":
+                        self._error(ins["line_num"], "Macro directives not implemented yet!", -1)
+
+                    case _:
+                        self._error(ins["line_num"], f"Encountered unknown directive: {directive}", -1)
 
 
     def _pass_two(self):
@@ -268,21 +206,30 @@ def main():
     parser.add_argument(
         "source_file",
         type=str,
-        description="Input assembly file to be assembled."
+        help="Input assembly file to be assembled."
     )
 
     parser.add_argument(
         "--output-file", "-o",
         required=False,
         dest="output_file",
-        help='Specify the name of the output object file. Defaults to <source_file>.out',
+        help="Specify the name of the output object file. Defaults to <source_file>.out",
         default=None,
         type=str
     )
 
+    parser.add_argument(
+        "--verbose", "-v",
+        required=False,
+        default=False,
+        help="Enable verbose output of assembly process.",
+        action="store_true",
+        dest="verbose"
+    )
+
     args = parser.parse_args()
 
-    Assembler().assemble(
+    Assembler(verbose=args.verbose).assemble(
         source_file=args.source_file,
         output_file=args.output_file
     )
