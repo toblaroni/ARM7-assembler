@@ -3,6 +3,8 @@ import os
 import sys
 import argparse
 from pathlib import Path
+import json
+import re
 
 class InstructionMode(Enum):
     ARM = 0
@@ -78,8 +80,11 @@ class Assembler:
 
                         instruction = {}
                         instruction["line_num"] = i     # For error msg
-                        instruction["tokens"] = [el for el in line.split(' ') if el != '']
+                        instruction["tokens"] = [ el for el in re.split('\s|,', line) if el != "" ] 
+
                         self._source[self._cur_file]["instructions"].append(instruction)
+
+                print(json.dumps(self._source, indent=4))
 
         except IOError as e:
             print(f"ERROR: Unable to open source file '{source_file}'")
@@ -90,6 +95,7 @@ class Assembler:
         self._verbose_print(f"Starting first pass for {self._cur_file}")
 
         for ins in self._source[self._cur_file]["instructions"]:
+            self._verbose_print(f"Parsing line {ins["line_num"]}: {ins["tokens"]}")
             tokens = ins["tokens"]
             token_index = 0
 
@@ -142,8 +148,12 @@ class Assembler:
                         self._cur_file = self._source[self._cur_file]["parent_file"]
 
                     case ".ALIGN" | ".BALIGN":  # MVP
-                        # .align {alignment} {, fill}, {, max}
-                        pass
+                        # .align {expression,{offset-expression}}
+                        if len(tokens) == 1:
+                            pass
+                        if len(tokens) == 1:
+                            pass
+                        
                     case ".TEXT":   # N2H
                         pass
                     case ".DATA":   # N2H
