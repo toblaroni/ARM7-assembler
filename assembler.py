@@ -6,14 +6,9 @@ from pathlib import Path
 import json
 import re
 
-class InstructionMode(Enum):
-    ARM = 0
-    THUMB = 1
-
 class Assembler:
     def __init__(self, verbose=False):
         self._labels = {}
-        self._INS_SET_MODE = InstructionMode.ARM    # Default
         self._source = {}                           # Contains info on all source code encountered
         self._PC = 0
         self._cur_file = None
@@ -91,7 +86,7 @@ class Assembler:
 
 
     def _pass_one(self):
-        self._verbose_print(f"Starting first pass for {self._cur_file}")
+        self._verbose_print(f"=== Starting first pass for {self._cur_file} ===")
 
         for ins in self._source[self._cur_file]["instructions"]:
             self._verbose_print(f"Parsing line {ins["line_num"]}: {ins["tokens"]}")
@@ -121,18 +116,18 @@ class Assembler:
                 match directive:
                     # === CONTROL DIRECTIVES ===
                     case ".ARM":    
-                        self._INS_SET_MODE = InstructionMode.ARM
+                        continue
                     case ".THUMB":
-                        self._INS_SET_MODE = InstructionMode.THUMB
+                        self._error(ins["line_num"], "THUMB mode not supported.... yet??", -1)
                     case ".CODE":
                         if len(tokens) != 2:
                             self._error(ins["line_num"], "Expected instruction set 32 or 16 after .code.", -1) 
 
                         code = tokens[token_index+1]
                         if code == "16":
-                            self._INS_SET_MODE = InstructionMode.THUMB
+                            self._error(ins["line_num"], "THUMB mode not supported.... yet??", -1)
                         elif code == "32":
-                            self._INS_SET_MODE = InstructionMode.ARM
+                            continue
                         else:
                             self._error(ins["line_num"], f"Invalid instruction set {code}. Expected 16 or 32.", -1)
 
@@ -163,61 +158,40 @@ class Assembler:
                         padding = (alignment - (self._PC % alignment)) % alignment
                         self._PC += padding
                         
-                    case ".TEXT":   # N2H
-                        pass
-                    case ".DATA":   # N2H
-                        pass
-
-                    case ".BALIGNW" | ".BALIGNL" | ".END" | ".FAIL" | ".ERR" | ".PRINT" | ".SECTION" | ".BSS" | ".STRUCT" | ".ORG" | ".POOL":
-                        self._error(ins["line_num"], f"Directive {directive} not implemented yet!", -1)
+                    case ".TEXT":
+                        continue
+                    case ".DATA":
+                        continue
 
                     # === Symbol Directives ===
-                    case ".EQU" | ".SET":   # N2H
-                        pass
-                    case ".GLOBAL" | ".GLOBL":  # N2H
-                        pass
-                    case ".EQUIV":
-                        self._error(ins["line_num"], f"Directive {directive} not implemented yet!", -1)
+                    case ".EQU" | ".SET":
+                        continue
+                    case ".GLOBAL" | ".GLOBL":  # This is for the linker...
+                        continue
 
                     # === Constant Definition Directives ===
                     case ".BYTE":   # MVP
-                        if len(tokens) == 1:
-                            self._error(ins["line_num"], f"Expected value(s) after .BYTE directive.", -1)
                         for token in tokens[1:]:
-                            if token.startswith("0x") and len(token[2:]) != 2:
-                                self._error(ins["line_num"], f"Expected byte-sized value, got {token}.", -1)
+                            # Assume they're the right size for now...
                             self._PC += 1
 
                     case ".WORD" | ".INT" | ".LONG":    # MVP
-                        pass
-
-                    # Implement later
-                    case ".HWORD" | ".SHORT" | ".ASCII" | ".ASCIZ" | ".STRING" | ".QUAD" | ".OCTA" | ".FLOAT" | ".SINGLE" | ".DOUBLE" | ".FILL" | ".ZERO" | ".SPACE" | "SKIP":
-                        self._error(ins["line_num"], f"Directive {directive} not implemented yet!", -1)
-
-                    # === Conditional Directives ===
-                    # Preprocessor...
-                    # Implement later
-                    case ".IF" | ".ELSEIF" | ".ELSE" | ".ENDIF" | ".IFDEF" | ".IFNDEF" | ".IFNOTDEF" | ".IFC" | ".IFEQS" | ".IFNES" | ".IFEQ" | ".IFNE" | ".IFGE" | ".IFLE" | ".IFLT":
-                        self._error(ins["line_num"], "Preprocessor directives not implemented yet!", -1)
-
-                    # === Looping Directives ===
-                    # Implement later
-                    case ".REPT" | ".IRP" | ".IRPC" | ".ENDR":
-                        self._error(ins["line_num"], "Looping directives not implemented yet!", -1)
-
-                    # === Macro Directives ===
-                    # Advanced assembler features
-                    # Implement later
-                    case ".MACRO" | ".ENDM" |".EXITM" | ".PURGEM":
-                        self._error(ins["line_num"], "Macro directives not implemented yet!", -1)
+                        for token in tokens[1:]:
+                            # Assume they're the right size for now...
+                            self._PC += 4   # 4-Bytes
 
                     case _:
-                        self._error(ins["line_num"], f"Encountered unknown directive: {directive}", -1)
+                        self._error(ins["line_num"], f"This directive doesn't exist or hasn't been implemented yet: {directive}", -1)
 
+            else:   # Assume normal instructions
+                self._PC += 4
 
     def _pass_two(self):
-        pass
+        # Turn assembly to binary...
+        self._verbose_print(f"=== Starting first pass for {self._cur_file} ===")
+
+        for ins in self._source[self._cur_file]["instructions"]:
+
 
 
 

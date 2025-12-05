@@ -2,7 +2,7 @@
 
 .data
     message:  .ascii  "Hello World!\n"
-    message_len: . - message            //  '.' is the current address
+    message_len: PC - message
 
 _start:
     MOV R7, #4  // Write
