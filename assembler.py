@@ -85,6 +85,24 @@ class Assembler:
             sys.exit(1)
 
 
+    def _token_is_label(self, token):
+        return  token.endswith(':') and (token[0].isalpha() or token.startswith('_'))
+
+    def _token_is_directive(self, token):
+        return token.startswith('.')
+
+    def _calc_padding(self, tokens, line_num):
+        alignment = 4           # Default 2**2
+        if len(tokens) == 2:
+            power = tokens[1]
+            try:
+                alignment = 2**int(power)
+            except ValueError:
+                self._error(line_num, f"Expected integer, got {power}", -1)
+
+        return (alignment - (self._PC % alignment)) % alignment
+
+
     def _pass_one(self):
         self._verbose_print(f"=== Starting first pass for {self._cur_file} ===")
 
@@ -93,44 +111,24 @@ class Assembler:
             tokens = ins["tokens"]
             token_index = 0
 
-            if tokens[0].endswith(':'):         # Label
+            if self._token_is_label(tokens[0]):         # Label
                 label_name = tokens[0][:-1]     # Remove colon
-
-                if tokens[0][0].isalpha() or tokens[0].startswith('_'):
-                    if not label_name in self._labels:
-                        self._labels[label_name] = self._PC
-                        token_index = 1
-                    else:
-                        self._error(ins["line_num"], f"{label_name} already defined.", -1)
+                if not label_name in self._labels:
+                    self._labels[label_name] = self._PC
+                    token_index = 1
                 else:
-                    self._error(ins["line_num"], "Invalid label.", -1) 
+                    self._error(ins["line_num"], f"{label_name} already defined.", -1)
 
             if token_index == len(tokens):  # Just a label on its own line
                 continue
 
             # === Handle Directives ===
-            elif tokens[token_index].startswith('.'):
+            elif self._token_is_directive(tokens[token_index]):
                 directive = tokens[token_index].upper()
                 self._verbose_print(f"Handling directive: {directive}")
 
                 match directive:
                     # === CONTROL DIRECTIVES ===
-                    case ".ARM":    
-                        continue
-                    case ".THUMB":
-                        self._error(ins["line_num"], "THUMB mode not supported.... yet??", -1)
-                    case ".CODE":
-                        if len(tokens) != 2:
-                            self._error(ins["line_num"], "Expected instruction set 32 or 16 after .code.", -1) 
-
-                        code = tokens[token_index+1]
-                        if code == "16":
-                            self._error(ins["line_num"], "THUMB mode not supported.... yet??", -1)
-                        elif code == "32":
-                            continue
-                        else:
-                            self._error(ins["line_num"], f"Invalid instruction set {code}. Expected 16 or 32.", -1)
-
                     case ".INCLUDE":    
                         # .include {file}
                         if len(tokens) != 2:
@@ -147,16 +145,8 @@ class Assembler:
                         if len(tokens) > 2:
                             self._error(ins["line_num"], "Syntax: '.ALIGN {expression}'", -1)
 
-                        alignment = 4           # Default 2**2
-                        if len(tokens) == 2:
-                            power = tokens[token_index+1]
-                            try:
-                                alignment = 2**int(power)
-                            except ValueError:
-                                self._error(ins["line_num"], f"Expected integer, got {power}", -1)
+                        self._PC += self._calc_padding(tokens, ins["line_num"])
 
-                        padding = (alignment - (self._PC % alignment)) % alignment
-                        self._PC += padding
                         
                     case ".TEXT":
                         continue
@@ -190,10 +180,61 @@ class Assembler:
         # Turn assembly to binary...
         self._verbose_print(f"=== Starting first pass for {self._cur_file} ===")
 
+        self._PC = 0
+        self._output_buffer = bytearray()
+
         for ins in self._source[self._cur_file]["instructions"]:
+            tokens = ins["tokens"]
+            
+            # If first word in label, remove it
+            if self._token_is_label(tokens[0]):
+                tokens = tokens[1:]
 
+            if len(tokens) == 0:
+                continue
+            
+            if self._token_is_directive(tokens[0]):
+                directive = tokens[0].upper()
+                
+                match directive:
+                    # === CONTROL DIRECTIVES ===
+                    case ".INCLUDE":    
+                        continue    # Handled in first pass
 
+                    case ".ALIGN" | ".BALIGN":  # MVP
+                        if len(tokens) > 2:
+                            self._error(ins["line_num"], "Syntax: '.ALIGN {expression}'", -1)
+                        padding = self._calc_padding(tokens, ins["line_num"])
 
+                        # Add NOP*padding instructions
+
+                        
+                    case ".TEXT":
+                        continue
+                    case ".DATA":
+                        continue
+
+                    # === Symbol Directives ===
+                    case ".EQU" | ".SET":
+                        continue
+                    case ".GLOBAL" | ".GLOBL":  # This is for the linker...
+                        continue
+
+                    # === Constant Definition Directives ===
+                    case ".BYTE":   # MVP
+                        for token in tokens[1:]:
+                            # Assume they're the right size for now...
+                            self._PC += 1
+
+                    case ".WORD" | ".INT" | ".LONG":    # MVP
+                        for token in tokens[1:]:
+                            # Assume they're the right size for now...
+                            self._PC += 4   # 4-Bytes
+
+                    case _:
+                        self._error(ins["line_num"], f"This directive doesn't exist or hasn't been implemented yet: {directive}", -1)
+
+                
 
 def main():
 
